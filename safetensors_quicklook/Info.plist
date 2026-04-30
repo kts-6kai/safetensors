@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Mirror the containing app's UTI declaration so the appex advertises the same .safetensors type during plugin discovery. -->
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>safetensors file</string>
+			<key>UTTypeIdentifier</key>
+			<string>io.util.safetensors.file</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>safetensors</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
+
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionAttributes</key>
+		<dict>
+			<!-- Keep this as a view-based QuickLook preview implemented by PreviewViewController. -->
+			<key>QLIsDataBasedPreview</key>
+			<false/>
+			<!-- Advertise the safetensors UTType exported by the containing app. -->
+			<key>QLSupportedContentTypes</key>
+			<array>
+				<string>io.util.safetensors.file</string>
+			</array>
+			<!-- This preview reads files directly and does not vend previews for CoreSpotlight searchable items yet. -->
+			<key>QLSupportsSearchableItems</key>
+			<false/>
+		</dict>
+		<!-- Register this appex with QuickLook's preview extension point. -->
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.quicklook.preview</string>
+		<!-- Use the XIB-backed preview controller that renders the basic header label. -->
+		<key>NSExtensionPrincipalClass</key>
+		<string>$(PRODUCT_MODULE_NAME).PreviewViewController</string>
+	</dict>
+</dict>
+</plist>
