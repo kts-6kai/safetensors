@@ -102,6 +102,16 @@ final class SafetensorsViewerView: NSView {
         
         let params: Int //== prod(shape)
         let bytes : Int //== params * bytesPerValue
+        let tensorIndex: Int?
+
+        init(name: String, dtype: String, shape: [Int], params: Int, bytes: Int, tensorIndex: Int? = nil) {
+            self.name = name
+            self.dtype = dtype
+            self.shape = shape
+            self.params = params
+            self.bytes = bytes
+            self.tensorIndex = tensorIndex
+        }
 
         //
         //let offset: String
@@ -136,6 +146,7 @@ final class SafetensorsViewerView: NSView {
      should we store tensors[] here or have some
      kind of datasource?
      */
+    private var allTensorRows: [TensorRow] = []
     private var tensorRows: [TensorRow] = []
 //    private var tensors: [STTensor] = []
     
@@ -161,7 +172,8 @@ final class SafetensorsViewerView: NSView {
             SummaryItem(label: "Tensor count", value: "-"),
             SummaryItem(label: "Metadata", value: "-")
         ]
-        tensorRows = [] //Self.placeholderRows
+        allTensorRows = [] //Self.placeholderRows
+        tensorRows = []
         reloadContent()
     }
 
@@ -174,7 +186,8 @@ final class SafetensorsViewerView: NSView {
             SummaryItem(label: "Tensor count", value: "Loading"),
             SummaryItem(label: "Metadata", value: "Loading")
         ]
-        tensorRows = [] //Self.placeholderRows
+        allTensorRows = [] //Self.placeholderRows
+        tensorRows = []
         reloadContent()
     }
 
@@ -236,7 +249,8 @@ final class SafetensorsViewerView: NSView {
             SummaryItem(label: "Tensor count", value: "\(snapshot.tensorRows.count)"),
             SummaryItem(label: "Auto make nested", value: UserDefaults.standard.bool(forKey: SafetensorsSettings.autoMakeNestedKey) ? "On" : "Off")
         ]
-        tensorRows = snapshot.tensorRows
+        allTensorRows = snapshot.tensorRows
+        applyCurrentSort()
         reloadContent()
     }
     
@@ -256,15 +270,15 @@ final class SafetensorsViewerView: NSView {
         ]
         
         //tensorRows = snapshot.tensorRows
-        tensorRows = stfile.tensors.map {
+        allTensorRows = stfile.tensors.enumerated().map { index, tensor in
             
-            let params = $0.shape.product()
+            let params = tensor.shape.product()
             
             /*
              temp
              */
             let bytesPerValue:Int
-            switch $0.dtype {
+            switch tensor.dtype {
             case "I32": bytesPerValue = 4
             case "F64": bytesPerValue = 8
             default:
@@ -273,17 +287,18 @@ final class SafetensorsViewerView: NSView {
             }
             
             return TensorRow(
-                name:   $0.name,
-                dtype:  $0.dtype,
-                shape:  $0.shape,
+                name:   tensor.name,
+                dtype:  tensor.dtype,
+                shape:  tensor.shape,
                 params: params,
-                bytes : params * bytesPerValue
+                bytes : params * bytesPerValue,
+                tensorIndex: index
             )
             
         }
         
 
-        
+        applyCurrentSort()
         reloadContent()
     }
 
@@ -301,6 +316,7 @@ final class SafetensorsViewerView: NSView {
             SummaryItem(label: "Tensor count", value: "-"),
             SummaryItem(label: "Error", value: string)
         ]
+        allTensorRows = []
         tensorRows = []
         reloadContent()
     }
@@ -478,7 +494,52 @@ final class SafetensorsViewerView: NSView {
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(identifier))
         column.title = title
         column.width = width
+        column.sortDescriptorPrototype = NSSortDescriptor(key: identifier, ascending: true)
         tableView.addTableColumn(column)
+    }
+
+    private func applyCurrentSort() {
+        guard let sortDescriptor = tableView.sortDescriptors.first,
+              let key = sortDescriptor.key else {
+            tensorRows = allTensorRows
+            return
+        }
+
+        let ascending = sortDescriptor.ascending
+        tensorRows = allTensorRows.sorted { lhs, rhs in
+            let comparison = compare(lhs, rhs, by: key)
+            if comparison == .orderedSame {
+                return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+            }
+            return ascending ? comparison == .orderedAscending : comparison == .orderedDescending
+        }
+    }
+
+    private func compare(_ lhs: TensorRow, _ rhs: TensorRow, by key: String) -> ComparisonResult {
+        switch key {
+        case "name":
+            return lhs.name.localizedStandardCompare(rhs.name)
+        case "dtype":
+            return lhs.dtype.localizedStandardCompare(rhs.dtype)
+        case "shape":
+            return shapeString(lhs.shape).localizedStandardCompare(shapeString(rhs.shape))
+        case "params":
+            return compare(lhs.params, rhs.params)
+        case "bytes":
+            return compare(lhs.bytes, rhs.bytes)
+        default:
+            return .orderedSame
+        }
+    }
+
+    private func compare(_ lhs: Int, _ rhs: Int) -> ComparisonResult {
+        if lhs < rhs {
+            return .orderedAscending
+        }
+        if lhs > rhs {
+            return .orderedDescending
+        }
+        return .orderedSame
     }
 
     /*
@@ -588,7 +649,9 @@ final class SafetensorsViewerView: NSView {
 
     func tensorForMenu() -> STTensor? {
         guard let stfile = loadedSTFile else {return nil}
-        return stfile.tensors[safe:tableView.clickedRow]
+        guard let row = tensorRows[safe:tableView.clickedRow] else {return nil}
+        guard let tensorIndex = row.tensorIndex else {return nil}
+        return stfile.tensors[safe:tensorIndex]
     }
 
     @objc private func copyDataAsJSON() {
@@ -727,6 +790,11 @@ extension SafetensorsViewerView: NSTableViewDataSource, NSTableViewDelegate {
     
     func numberOfRows(in tableView: NSTableView) -> Int {
         return tensorRows.count
+    }
+
+    func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
+        applyCurrentSort()
+        tableView.reloadData()
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
