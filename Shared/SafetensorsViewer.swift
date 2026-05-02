@@ -7,6 +7,7 @@
 
 import Cocoa
 
+
 enum SafetensorsDebug {
 
     nonisolated(unsafe)
@@ -84,6 +85,12 @@ final class ToastView: NSView {
     }
 }
 
+/*
+ "Summary View"
+ - left-side view.
+ 
+ */
+
 @MainActor
 final class SafetensorsViewerView: NSView {
     private struct SummaryItem {
@@ -94,23 +101,28 @@ final class SafetensorsViewerView: NSView {
     /*
      STTensor stores what is in the .safetensors file.
      This adds some more fields.
+     
+     todo:
+     - computed fields: min, max, #NaN, etc.
      */
     fileprivate struct TensorRow {
+        
+        let index: Int
+
         let name:   String
         let dtype:  String
         let shape:  [Int]
         
         let params: Int //== prod(shape)
         let bytes : Int //== params * bytesPerValue
-        let tensorIndex: Int?
 
-        init(name: String, dtype: String, shape: [Int], params: Int, bytes: Int, tensorIndex: Int? = nil) {
-            self.name = name
-            self.dtype = dtype
-            self.shape = shape
+        init(index: Int, name: String, dtype: String, shape: [Int], params: Int, bytes: Int) {
+            self.index  = index
+            self.name   = name
+            self.dtype  = dtype
+            self.shape  = shape
             self.params = params
-            self.bytes = bytes
-            self.tensorIndex = tensorIndex
+            self.bytes  = bytes
         }
 
         //
@@ -167,12 +179,14 @@ final class SafetensorsViewerView: NSView {
     func showPlaceholder() {
         parserErrorMessage = nil
         summaryItems = [
-            SummaryItem(label: "File size", value: "-"),
-            SummaryItem(label: "Header size", value: "-"),
+            /*
+            SummaryItem(label: "File size",    value: "-"),
+            SummaryItem(label: "Header size",  value: "-"),
             SummaryItem(label: "Tensor count", value: "-"),
-            SummaryItem(label: "Metadata", value: "-")
+            SummaryItem(label: "Metadata",     value: "-")
+             */
         ]
-        allTensorRows = [] //Self.placeholderRows
+        allTensorRows = []
         tensorRows = []
         reloadContent()
     }
@@ -181,12 +195,15 @@ final class SafetensorsViewerView: NSView {
         isLoading = true
         parserErrorMessage = nil
         summaryItems = [
-            SummaryItem(label: "File size", value: "Loading"),
-            SummaryItem(label: "Header size", value: "Loading"),
+            
+            /*
+            SummaryItem(label: "File size",    value: "Loading"),
+            SummaryItem(label: "Header size",  value: "Loading"),
             SummaryItem(label: "Tensor count", value: "Loading"),
-            SummaryItem(label: "Metadata", value: "Loading")
+            SummaryItem(label: "Metadata",     value: "Loading")
+             */
         ]
-        allTensorRows = [] //Self.placeholderRows
+        allTensorRows = []
         tensorRows = []
         reloadContent()
     }
@@ -205,7 +222,6 @@ final class SafetensorsViewerView: NSView {
             }
 */
             
-
             self.loadedSTFile = stfile
             
             safetensorsDebugLog("STFile init success")
@@ -260,11 +276,29 @@ final class SafetensorsViewerView: NSView {
     private func showSTFile(_ stfile:STFile) {
         isLoading = false
         parserErrorMessage = nil
+                
+        let summary = STSummary(stfile:stfile)
+        
+        
+        var tt:[String] = []
+        for pair in summary.dtypes.sortedByValueDescending() {
+            tt.append(pair.key)
+            tt.append(" : ")
+            tt.append(String(pair.value))
+            tt.append("\n")
+        }
+        let dtypes_string = tt.joined(separator:"")
+
+        
+        
         summaryItems = [
-            SummaryItem(label: "File size", value: "?"),
-            SummaryItem(label: "Header size", value: "\(stfile.headerSize)"),
-            SummaryItem(label: "Tensor count", value: "\(stfile.tensors.count)"),
-            
+            SummaryItem(label: "File size",
+                        value: summary.fileSizeString()),
+                        
+            SummaryItem(label: "Header size",  value: "\(summary.headerSize)"),
+            SummaryItem(label: "Tensor count", value: "\(summary.tensorCount)"),
+            SummaryItem(label: "dtypes", value: "\(dtypes_string)"),
+
             //?
             //SummaryItem(label: "Auto make nested", value: UserDefaults.standard.bool(forKey: SafetensorsSettings.autoMakeNestedKey) ? "On" : "Off")
         ]
@@ -274,29 +308,20 @@ final class SafetensorsViewerView: NSView {
             
             let params = tensor.shape.product()
             
-            /*
-             temp
-             */
-            let bytesPerValue:Int
-            switch tensor.dtype {
-            case "I32": bytesPerValue = 4
-            case "F64": bytesPerValue = 8
-            default:
-                //temp:
-                bytesPerValue = 1
-            }
-            
+            let bytes = tensor.dataOffsetEnd - tensor.dataOffsetStart
+            // could check against:
+            //  bytes : params * bytesPerValue
+
             return TensorRow(
-                name:   tensor.name,
-                dtype:  tensor.dtype,
-                shape:  tensor.shape,
+                index : index,
+                name  : tensor.name,
+                dtype : tensor.dtype,
+                shape : tensor.shape,
                 params: params,
-                bytes : params * bytesPerValue,
-                tensorIndex: index
+                bytes : bytes,
             )
             
         }
-        
 
         applyCurrentSort()
         reloadContent()
@@ -310,12 +335,7 @@ final class SafetensorsViewerView: NSView {
         safetensorsDebugLog("showError: \(string)")
         isLoading = false
         parserErrorMessage = string
-        summaryItems = [
-            SummaryItem(label: "File size", value: "-"),
-            SummaryItem(label: "Header size", value: "-"),
-            SummaryItem(label: "Tensor count", value: "-"),
-            SummaryItem(label: "Error", value: string)
-        ]
+        summaryItems = []
         allTensorRows = []
         tensorRows = []
         reloadContent()
@@ -379,6 +399,7 @@ final class SafetensorsViewerView: NSView {
         tableView.menu = makeTableMenu()
 
         //
+        addColumn(identifier: "index",  title: "index",   width: 60)
         addColumn(identifier: "name",   title: "name",   width: 280)
         addColumn(identifier: "dtype",  title: "dtype",  width: 80)
         addColumn(identifier: "shape",  title: "shape",  width: 160)
@@ -517,16 +538,19 @@ final class SafetensorsViewerView: NSView {
 
     private func compare(_ lhs: TensorRow, _ rhs: TensorRow, by key: String) -> ComparisonResult {
         switch key {
-        case "name":
-            return lhs.name.localizedStandardCompare(rhs.name)
-        case "dtype":
-            return lhs.dtype.localizedStandardCompare(rhs.dtype)
+            
+            
+            //strings:
+        case "name":  return lhs.name.localizedStandardCompare(rhs.name)
+        case "dtype": return lhs.dtype.localizedStandardCompare(rhs.dtype)
         case "shape":
             return shapeString(lhs.shape).localizedStandardCompare(shapeString(rhs.shape))
-        case "params":
-            return compare(lhs.params, rhs.params)
-        case "bytes":
-            return compare(lhs.bytes, rhs.bytes)
+            
+        //integers:
+        case "index":  return compare(lhs.index,  rhs.index)
+        case "params": return compare(lhs.params, rhs.params)
+        case "bytes":  return compare(lhs.bytes,  rhs.bytes)
+            
         default:
             return .orderedSame
         }
@@ -546,6 +570,10 @@ final class SafetensorsViewerView: NSView {
      check for single or multiple selection???
      */
     private func makeTableMenu() -> NSMenu {
+        
+        /*
+         */
+        
         let menu = NSMenu()
 
         let copyNameItem = NSMenuItem(
@@ -562,7 +590,15 @@ final class SafetensorsViewerView: NSView {
             keyEquivalent: "")
         item1.target = self
         menu.addItem(item1)
+
         
+        let item2 = NSMenuItem(
+            title: "Export tensor as .npy",
+            action: #selector(exportTensorAsNpy),
+            keyEquivalent: "")
+        item2.target = self
+        menu.addItem(item2)
+
 
         let detailsItem = NSMenuItem(
             title: "Details...",
@@ -621,10 +657,20 @@ final class SafetensorsViewerView: NSView {
             label.font = .systemFont(ofSize: 11, weight: .medium)
             label.textColor = .secondaryLabelColor
 
+            /*
+             
+             */
             let value = NSTextField(labelWithString: item.value)
             value.font = .systemFont(ofSize: 13, weight: .regular)
             value.lineBreakMode = .byTruncatingTail
             value.maximumNumberOfLines = 2
+            
+            // allow selection:
+            value.isSelectable = true
+            value.isEditable = false
+            value.isBordered = false
+            value.drawsBackground = false
+            value.focusRingType = .none
 
             group.addArrangedSubview(label)
             group.addArrangedSubview(value)
@@ -647,26 +693,38 @@ final class SafetensorsViewerView: NSView {
 //        return tensors[safe:row]
 //  }
 
+    /*
+     using .clickedRow
+     - most recent?
+     - what about on multiple?
+     */
     func tensorForMenu() -> STTensor? {
         guard let stfile = loadedSTFile else {return nil}
         guard let row = tensorRows[safe:tableView.clickedRow] else {return nil}
-        guard let tensorIndex = row.tensorIndex else {return nil}
-        return stfile.tensors[safe:tensorIndex]
+        return stfile.tensors[safe:row.index]
     }
 
+    @objc private func exportTensorAsNpy() {
+
+        let selectedRows = tableView.selectedRowIndexes
+        //IndexSet
+        
+        let count = selectedRows.count
+        print(selectedRows)
+        print(count)
+
+        print("todo...")
+    }
+
+    
     @objc private func copyDataAsJSON() {
         guard let tensor = tensorForMenu() else {return}
-        
         guard let stfile = loadedSTFile else {return}
-
         
         if let jsonString = stfile.readArrayAsJSON(tensor: tensor) {
             
-            let n = jsonString.count
-            
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(jsonString, forType:.string)
-            showToast("Copied data (length \(n))")
+            copyString(jsonString)
+            showToast("Copied data (length \(jsonString.count))")
 
         }
         else {
@@ -676,15 +734,18 @@ final class SafetensorsViewerView: NSView {
 
     }
     
+    func copyString(_ string:String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(string, forType:.string)
+    }
+    
     @objc private func copyTensorName() {
         guard let tensor = tensorForMenu() else {return}
         
-        let n = tensor.name.count
-        
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(tensor.name, forType:.string)
-        showToast("Copied name [length \(n)]")
+        copyString(tensor.name)
+        showToast("Copied name [length \(tensor.name.count)]")
     }
+    
 
     @objc private func showTensorDetails() {
         guard let tensor = tensorForMenu() else {return}
@@ -774,17 +835,10 @@ final class SafetensorsViewerView: NSView {
             }
         }
     }
-
-    /*
-    private static let placeholderRows = [
-        /*
-        TensorRow(name: "tensor_a.weight", dtype: "F32", shape: "[1024, 1024]", offset: "0"),
-        TensorRow(name: "tensor_b.bias", dtype: "F16", shape: "[1024]", offset: "4194304"),
-        TensorRow(name: "tensor_c.scale", dtype: "I32", shape: "[256]", offset: "4196352")
-         */
-    ]
-     */
+    
 }
+
+
 
 extension SafetensorsViewerView: NSTableViewDataSource, NSTableViewDelegate {
     
@@ -799,24 +853,28 @@ extension SafetensorsViewerView: NSTableViewDataSource, NSTableViewDelegate {
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         
-        // tensors[safe:row] vs tensors.indices.contains(row)
-        
         guard let tensorRow = tensorRows[safe:row] else {return nil}
-        
         guard let column = tableColumn else {return nil}
         
         let t:String
         switch column.identifier.rawValue {
+        case "index":  t = String(tensorRow.index)
 
-        case "name":  t = tensorRow.name
-        case "dtype": t = tensorRow.dtype
-        case "shape":
-            t = shapeString(tensorRow.shape)
+        case "name":   t = tensorRow.name
+        case "dtype":  t = tensorRow.dtype
+        case "shape":  t = shapeString(tensorRow.shape)
         case "params":
-            t = String(tensorRow.params)
-            
+            //t = String(tensorRow.params)
+            t = tensorRow.params.formatted()
+
         case "bytes":
-            t = String(tensorRow.bytes)
+            // format bytes?
+            let nb = tensorRow.bytes
+            /*
+             raw + format?
+             
+             */
+            t = nb.formatted(.byteCount(style:.file))
 
         default:
             t = "?"
@@ -835,22 +893,6 @@ extension SafetensorsViewerView: NSTableViewDataSource, NSTableViewDelegate {
         return textField
     }
 
-    /*
-    private func value(for column: String, in row: TensorRow) -> String {
-        switch column {
-        case "name":
-            return row.name
-        case "dtype":
-            return row.dtype
-        case "shape":
-            return row.shape
-        case "offset":
-            return row.offset
-        default:
-            return ""
-        }
-    }
-     */
 }
 
 enum SafetensorsHeaderReader {
@@ -887,7 +929,6 @@ private struct SafetensorsParserError: LocalizedError {
 
 private enum SafetensorsFileLoader {
     static func load(url: URL) async throws -> SafetensorsViewerSnapshot {
-        
         
         let artificialLoadDelayNanoseconds = SafetensorsDebug.artificialLoadDelayNanoseconds
         let parserErrorMessage = SafetensorsDebug.parserErrorMessage

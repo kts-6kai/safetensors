@@ -5,8 +5,10 @@ Gen by SwiftFile...
 2. requires
 2.1. arraysafe (len 398)
 2.2. safetensors_ndarrays (len 2065)
-2.3. safetensors (len 6163)
-2.4. xcode_safetensors (len 45)
+2.3. safetensors.shapeString (len 186)
+2.4. ext.FileManager.fileSize (len 321)
+2.5. safetensors (len 8197)
+2.6. xcode_safetensors (len 45)
 3. emacs_auto_revert (len 103)
 
 */
@@ -134,13 +136,161 @@ func readArray_f64_d1(
 
     return flatArray
 }
-//SECTION 2.3. safetensors
+//SECTION 2.3. safetensors.shapeString
 /*
+ 
+ */
+func shapeString(_ shape:[Int]) -> String {
+
+    //option: add space...
+    
+    let commasep = (shape.map {String($0)}).joined(separator:",")
+    return "[" + commasep + "]"
+}
+//SECTION 2.4. ext.FileManager.fileSize
+
+/*
+ 
+ */
+extension FileManager {
+
+    func fileSize(atPath path:String) -> UInt64? {
+
+        let attr:[FileAttributeKey : Any]
+        do {
+            attr = try FileManager.default.attributesOfItem(atPath:path)
+        }
+        catch {
+            return nil
+        }
+
+        return attr[.size] as? UInt64
+    }
+}
+//SECTION 2.5. safetensors
+/*
+
  */
 
 //requires_import:Foundation
-
 //requires:safetensors_ndarrays
+//requires:safetensors.shapeString
+
+/*
+ should be generated...
+ */
+enum STDtype {
+    case I32
+    case U16
+
+    //?
+    //unknown(String)
+}
+
+/*
+ */
+struct STSummary {
+    var fileSize:UInt64?
+    var headerSize:UInt64
+    var tensorCount:Int
+    var dtypes:Dictionary<String,Int>
+}
+
+
+
+
+/*
+
+ Helper for counters.
+ 
+ */
+extension Dictionary where Value: Comparable {
+    func sortedByValueAscending() -> [(key: Key, value: Value)] {
+        sorted { $0.value < $1.value }
+    }
+
+    func sortedByValueDescending() -> [(key: Key, value: Value)] {
+        sorted { $0.value > $1.value }
+    }
+    
+}
+
+
+
+
+extension STSummary {
+
+    init(stfile:STFile) {
+
+        var counts: [String: Int] = [:]
+        for tensor in stfile.tensors {
+            counts[tensor.dtype, default: 0] += 1
+        }
+
+        self.fileSize    = stfile.fileSize
+        self.headerSize  = stfile.headerSize
+        self.tensorCount = stfile.tensors.count
+        self.dtypes      = counts
+    }
+
+    func fileSizeString() -> String {
+
+        if let value = fileSize {
+            return String(value)
+        }
+        else {
+            return "?"
+        }
+    }
+
+    /*
+     human-readable string.
+     */
+    func toString() -> String {
+
+        var tt:[String] = []
+
+        tt.append(contentsOf:[
+
+                    "fileSize:  ",
+                    fileSizeString(),
+                    "\n",
+                    
+                    "headerSize: ", String(headerSize), "\n",
+                    "tensorCount: ", String(tensorCount), "\n",
+
+                    "dtypes:\n",
+                  ])
+        for pair in dtypes.sortedByValueDescending() {
+            tt.append("  ")
+            tt.append(pair.key)
+            tt.append(" : ")
+            tt.append(String(pair.value))
+            tt.append("\n")
+        }
+
+        return tt.joined(separator:"")
+        
+    }
+    
+}
+
+
+
+extension STDtype {
+    
+    func bytesPerValue() -> Int {
+        switch self {
+        case .I32: return 4
+        case .U16: return 2
+        }
+    }
+    
+}
+
+//enum STDtype {
+//    case 
+//}
 
 
 
@@ -155,13 +305,6 @@ extension Sequence where Element == Int {
 
 /*
  */
-func shapeString(_ shape:[Int]) -> String {
-
-    //option: add space...
-    
-    let commasep = (shape.map {String($0)}).joined(separator:",")
-    return "[" + commasep + "]"
-}
 
 
 
@@ -197,12 +340,16 @@ extension FileHandle {
  
  */
 
+//requires:ext.FileManager.fileSize
+
 struct STFile {
 
     static let NAME_METADATA = "__metadata__"
     
     var path:String
     var fileHandle:FileHandle?
+
+    var fileSize:UInt64?
 
     var headerSize:UInt64 = 0
     
@@ -215,6 +362,9 @@ struct STFile {
 
     init?(path:String) {
         self.path = path
+
+        //optional:
+        self.fileSize = FileManager.default.fileSize(atPath:path)
 
         let url = URL(fileURLWithPath:path)
 
@@ -429,7 +579,7 @@ extension STFile {
 
 
 
-//SECTION 2.4. xcode_safetensors
+//SECTION 2.6. xcode_safetensors
 
 //requires:arraysafe
 //requires:safetensors

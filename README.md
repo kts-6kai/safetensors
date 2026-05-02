@@ -63,6 +63,6 @@ to generate previews for file URLs.
 
 ```
 
-fnd-defs type swiftlib gen --outfile /Users/kenschutte/Dropbox/repos/xcode/safetensors/generated.swift xcode_safetensors
+fnd-defs type swiftlib gen --outfile /Users/kenschutte/Dropbox/repos/safetensors/generated.swift xcode_safetensors
 
 ```
