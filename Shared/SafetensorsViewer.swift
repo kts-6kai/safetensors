@@ -44,6 +44,35 @@ private struct SafetensorsViewerSnapshot {
 }
 
 @MainActor
+final class SidebarResizeHandle: NSView {
+    var onDrag: ((CGFloat) -> Void)?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        configure()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        configure()
+    }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .resizeLeftRight)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        onDrag?(event.deltaX)
+    }
+
+    private func configure() {
+        translatesAutoresizingMaskIntoConstraints = false
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.separatorColor.cgColor
+    }
+}
+
+@MainActor
 final class ToastView: NSView {
     private let label = NSTextField(labelWithString: "")
 
@@ -132,21 +161,27 @@ final class SafetensorsViewerView: NSView {
      
      */
 
-    private let sidebarWidth: CGFloat = 220
+    private let minimumSidebarWidth: CGFloat = 160
+    private let maximumSidebarWidth: CGFloat = 420
     private let toolbar = NSStackView()
     private let toggleSidebarButton = NSButton()
+    private let actionsButton = NSPopUpButton(frame: .zero, pullsDown: true)
     private let contentStack = NSStackView()
-    private let sidebarView = NSView()
+    private let sidebarView = NSVisualEffectView()
+    private let sidebarResizeHandle = SidebarResizeHandle()
     private let summaryStack = NSStackView()
     private let mainContentView = NSView()
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
+    private let statusBarView = NSView()
+    private let statusBarLabel = NSTextField(labelWithString: "")
     private let errorView = NSView()
     private let errorMessageLabel = NSTextField(labelWithString: "")
     private let progressIndicator = NSProgressIndicator()
     private let toastView = ToastView()
 
     private var sidebarWidthConstraint: NSLayoutConstraint?
+    private var currentSidebarWidth: CGFloat = 220
     private var isSidebarVisible = true
     private var isLoading = false
     private var parserErrorMessage: String?
@@ -346,6 +381,7 @@ final class SafetensorsViewerView: NSView {
         configureToolbar()
         configureSidebar()
         configureTable()
+        configureStatusBar()
         configureErrorView()
         configureProgressIndicator()
         configureToast()
@@ -364,14 +400,19 @@ final class SafetensorsViewerView: NSView {
         toggleSidebarButton.target = self
         toggleSidebarButton.action = #selector(toggleSidebar)
 
+        actionsButton.bezelStyle = .rounded
+        actionsButton.menu = makeActionsMenu()
+
         toolbar.addArrangedSubview(toggleSidebarButton)
+        toolbar.addArrangedSubview(actionsButton)
         toolbar.addArrangedSubview(NSView())
     }
 
     private func configureSidebar() {
         sidebarView.translatesAutoresizingMaskIntoConstraints = false
-        sidebarView.wantsLayer = true
-        sidebarView.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
+        sidebarView.material = .sidebar
+        sidebarView.blendingMode = .withinWindow
+        sidebarView.state = .followsWindowActiveState
 
         summaryStack.translatesAutoresizingMaskIntoConstraints = false
         summaryStack.orientation = .vertical
@@ -379,11 +420,21 @@ final class SafetensorsViewerView: NSView {
         summaryStack.spacing = 14
         summaryStack.edgeInsets = NSEdgeInsets(top: 16, left: 14, bottom: 16, right: 14)
         sidebarView.addSubview(summaryStack)
+        sidebarView.addSubview(sidebarResizeHandle)
+
+        sidebarResizeHandle.onDrag = { [weak self] deltaX in
+            self?.resizeSidebar(by: deltaX)
+        }
 
         NSLayoutConstraint.activate([
             summaryStack.leadingAnchor.constraint(equalTo: sidebarView.leadingAnchor),
-            summaryStack.trailingAnchor.constraint(equalTo: sidebarView.trailingAnchor),
-            summaryStack.topAnchor.constraint(equalTo: sidebarView.topAnchor)
+            summaryStack.trailingAnchor.constraint(equalTo: sidebarResizeHandle.leadingAnchor),
+            summaryStack.topAnchor.constraint(equalTo: sidebarView.topAnchor),
+
+            sidebarResizeHandle.widthAnchor.constraint(equalToConstant: 6),
+            sidebarResizeHandle.topAnchor.constraint(equalTo: sidebarView.topAnchor),
+            sidebarResizeHandle.trailingAnchor.constraint(equalTo: sidebarView.trailingAnchor),
+            sidebarResizeHandle.bottomAnchor.constraint(equalTo: sidebarView.bottomAnchor)
         ])
     }
 
@@ -413,6 +464,36 @@ final class SafetensorsViewerView: NSView {
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = true
         scrollView.borderType = .noBorder
+    }
+
+    private func configureStatusBar() {
+        statusBarView.translatesAutoresizingMaskIntoConstraints = false
+        statusBarView.wantsLayer = true
+        statusBarView.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
+
+        let separator = NSBox()
+        separator.translatesAutoresizingMaskIntoConstraints = false
+        separator.boxType = .separator
+
+        statusBarLabel.translatesAutoresizingMaskIntoConstraints = false
+        statusBarLabel.font = .systemFont(ofSize: 11)
+        statusBarLabel.textColor = .secondaryLabelColor
+        statusBarLabel.lineBreakMode = .byTruncatingTail
+
+        statusBarView.addSubview(separator)
+        statusBarView.addSubview(statusBarLabel)
+
+        NSLayoutConstraint.activate([
+            statusBarView.heightAnchor.constraint(equalToConstant: 24),
+
+            separator.leadingAnchor.constraint(equalTo: statusBarView.leadingAnchor),
+            separator.trailingAnchor.constraint(equalTo: statusBarView.trailingAnchor),
+            separator.topAnchor.constraint(equalTo: statusBarView.topAnchor),
+
+            statusBarLabel.leadingAnchor.constraint(equalTo: statusBarView.leadingAnchor, constant: 10),
+            statusBarLabel.trailingAnchor.constraint(lessThanOrEqualTo: statusBarView.trailingAnchor, constant: -10),
+            statusBarLabel.centerYAnchor.constraint(equalTo: statusBarView.centerYAnchor)
+        ])
     }
 
     private func configureErrorView() {
@@ -473,9 +554,10 @@ final class SafetensorsViewerView: NSView {
         contentStack.addArrangedSubview(sidebarView)
         contentStack.addArrangedSubview(mainContentView)
         mainContentView.addSubview(scrollView)
+        mainContentView.addSubview(statusBarView)
         mainContentView.addSubview(errorView)
 
-        sidebarWidthConstraint = sidebarView.widthAnchor.constraint(equalToConstant: sidebarWidth)
+        sidebarWidthConstraint = sidebarView.widthAnchor.constraint(equalToConstant: currentSidebarWidth)
         sidebarWidthConstraint?.isActive = true
 
         NSLayoutConstraint.activate([
@@ -494,12 +576,16 @@ final class SafetensorsViewerView: NSView {
             scrollView.leadingAnchor.constraint(equalTo: mainContentView.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: mainContentView.trailingAnchor),
             scrollView.topAnchor.constraint(equalTo: mainContentView.topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: mainContentView.bottomAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: statusBarView.topAnchor),
+
+            statusBarView.leadingAnchor.constraint(equalTo: mainContentView.leadingAnchor),
+            statusBarView.trailingAnchor.constraint(equalTo: mainContentView.trailingAnchor),
+            statusBarView.bottomAnchor.constraint(equalTo: mainContentView.bottomAnchor),
 
             errorView.leadingAnchor.constraint(equalTo: mainContentView.leadingAnchor),
             errorView.trailingAnchor.constraint(equalTo: mainContentView.trailingAnchor),
             errorView.topAnchor.constraint(equalTo: mainContentView.topAnchor),
-            errorView.bottomAnchor.constraint(equalTo: mainContentView.bottomAnchor),
+            errorView.bottomAnchor.constraint(equalTo: statusBarView.topAnchor),
 
             progressIndicator.centerXAnchor.constraint(equalTo: mainContentView.centerXAnchor),
             progressIndicator.centerYAnchor.constraint(equalTo: mainContentView.centerYAnchor),
@@ -611,11 +697,39 @@ final class SafetensorsViewerView: NSView {
         return menu
     }
 
+    private func makeActionsMenu() -> NSMenu {
+        let menu = NSMenu()
+
+        menu.addItem(withTitle: "Actions", action: nil, keyEquivalent: "")
+
+        let convertToNestedItem = NSMenuItem(
+            title: "Convert to nested",
+            action: #selector(convertToNested),
+            keyEquivalent: "")
+        convertToNestedItem.target = self
+        menu.addItem(convertToNestedItem)
+
+        return menu
+    }
+
     private func reloadContent() {
         rebuildSummary()
         tableView.reloadData()
         updateErrorView()
         updateProgressIndicator()
+        updateStatusBar()
+    }
+
+    private func updateStatusBar() {
+        let count = tableView.selectedRowIndexes.count
+        switch count {
+        case 0:
+            statusBarLabel.stringValue = ""
+        case 1:
+            statusBarLabel.stringValue = "1 row selected"
+        default:
+            statusBarLabel.stringValue = "\(count) rows selected"
+        }
     }
 
     private func updateErrorView() {
@@ -681,13 +795,31 @@ final class SafetensorsViewerView: NSView {
     @objc private func toggleSidebar() {
         isSidebarVisible.toggle()
         sidebarView.isHidden = !isSidebarVisible
-        sidebarWidthConstraint?.constant = isSidebarVisible ? sidebarWidth : 0
+        sidebarWidthConstraint?.constant = isSidebarVisible ? currentSidebarWidth : 0
 
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.18
             layoutSubtreeIfNeeded()
         }
     }
+
+    private func resizeSidebar(by deltaX: CGFloat) {
+        guard isSidebarVisible else {
+            return
+        }
+
+        currentSidebarWidth = min(maximumSidebarWidth, max(minimumSidebarWidth, currentSidebarWidth + deltaX))
+        sidebarWidthConstraint?.constant = currentSidebarWidth
+        layoutSubtreeIfNeeded()
+    }
+
+    /*
+     
+     */
+    @objc private func convertToNested() {
+        print("todo....")
+    }
+    
 
 //    func tensorAtRow(_ row:Int) -> STTensor? {
 //        return tensors[safe:row]
@@ -849,6 +981,11 @@ extension SafetensorsViewerView: NSTableViewDataSource, NSTableViewDelegate {
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
         applyCurrentSort()
         tableView.reloadData()
+        updateStatusBar()
+    }
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        updateStatusBar()
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
