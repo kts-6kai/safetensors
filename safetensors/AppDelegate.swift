@@ -11,6 +11,7 @@ import UniformTypeIdentifiers
 @main
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindowController: SettingsWindowController?
+    private var helpWindowController: HelpWindowController?
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         safetensorsDebugLog("AppDelegate applicationDidFinishLaunching")
@@ -57,6 +58,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         settingsWindowController?.showWindow(sender)
         settingsWindowController?.window?.makeKeyAndOrderFront(sender)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @IBAction func showHelp(_ sender: Any?) {
+        if helpWindowController == nil {
+            helpWindowController = HelpWindowController()
+        }
+
+        helpWindowController?.showWindow(sender)
+        helpWindowController?.window?.makeKeyAndOrderFront(sender)
         NSApp.activate(ignoringOtherApps: true)
     }
 
