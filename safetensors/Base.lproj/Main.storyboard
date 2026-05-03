@@ -169,6 +169,12 @@
                                                 <action selector="selectAll:" target="Ady-hI-5gd" id="VNm-Mi-diN"/>
                                             </connections>
                                         </menuItem>
+                                        <menuItem title="Select None" id="M5Q-PS-BLQ">
+                                            <modifierMask key="keyEquivalentModifierMask"/>
+                                            <connections>
+                                                <action selector="selectNone:" target="Ady-hI-5gd" id="zK1-xB-czq"/>
+                                            </connections>
+                                        </menuItem>
                                         <menuItem isSeparatorItem="YES" id="uyl-h8-XO2"/>
                                         <menuItem title="Find" id="4EN-yA-p0u">
                                             <modifierMask key="keyEquivalentModifierMask"/>

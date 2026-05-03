@@ -166,6 +166,7 @@ final class SafetensorsViewerView: NSView {
     private let toolbar = NSStackView()
     private let toggleSidebarButton = NSButton()
     private let actionsButton = NSPopUpButton(frame: .zero, pullsDown: true)
+    private let searchField = NSSearchField()
     private let contentStack = NSStackView()
     private let sidebarView = NSVisualEffectView()
     private let sidebarResizeHandle = SidebarResizeHandle()
@@ -188,6 +189,7 @@ final class SafetensorsViewerView: NSView {
     private var summaryItems: [SummaryItem] = []
     private var detailsWindowController: NSWindowController?
     private var toastTask: Task<Void, Never>?
+    private var searchString = ""
     
     /*
      should we store tensors[] here or have some
@@ -301,7 +303,7 @@ final class SafetensorsViewerView: NSView {
             SummaryItem(label: "Auto make nested", value: UserDefaults.standard.bool(forKey: SafetensorsSettings.autoMakeNestedKey) ? "On" : "Off")
         ]
         allTensorRows = snapshot.tensorRows
-        applyCurrentSort()
+        applyCurrentFilterAndSort()
         reloadContent()
     }
     
@@ -358,7 +360,7 @@ final class SafetensorsViewerView: NSView {
             
         }
 
-        applyCurrentSort()
+        applyCurrentFilterAndSort()
         reloadContent()
     }
 
@@ -403,9 +405,26 @@ final class SafetensorsViewerView: NSView {
         actionsButton.bezelStyle = .rounded
         actionsButton.menu = makeActionsMenu()
 
+        searchField.translatesAutoresizingMaskIntoConstraints = false
+        searchField.placeholderString = "Search tensors"
+        searchField.delegate = self
+        searchField.target = self
+        searchField.action = #selector(searchFieldChanged)
+
+        let spacer = NSView()
+        spacer.translatesAutoresizingMaskIntoConstraints = false
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
         toolbar.addArrangedSubview(toggleSidebarButton)
         toolbar.addArrangedSubview(actionsButton)
-        toolbar.addArrangedSubview(NSView())
+        toolbar.addArrangedSubview(spacer)
+        toolbar.addArrangedSubview(searchField)
+
+        NSLayoutConstraint.activate([
+            spacer.widthAnchor.constraint(greaterThanOrEqualToConstant: 12),
+            searchField.widthAnchor.constraint(equalToConstant: 240)
+        ])
     }
 
     private func configureSidebar() {
@@ -605,15 +624,24 @@ final class SafetensorsViewerView: NSView {
         tableView.addTableColumn(column)
     }
 
-    private func applyCurrentSort() {
+    private func applyCurrentFilterAndSort() {
+        let sourceRows: [TensorRow]
+        if searchString.isEmpty {
+            sourceRows = allTensorRows
+        } else {
+            sourceRows = allTensorRows.filter { row in
+                row.name.range(of: searchString, options: [.caseInsensitive, .diacriticInsensitive]) != nil
+            }
+        }
+
         guard let sortDescriptor = tableView.sortDescriptors.first,
               let key = sortDescriptor.key else {
-            tensorRows = allTensorRows
+            tensorRows = sourceRows
             return
         }
 
         let ascending = sortDescriptor.ascending
-        tensorRows = allTensorRows.sorted { lhs, rhs in
+        tensorRows = sourceRows.sorted { lhs, rhs in
             let comparison = compare(lhs, rhs, by: key)
             if comparison == .orderedSame {
                 return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
@@ -724,7 +752,11 @@ final class SafetensorsViewerView: NSView {
         let count = tableView.selectedRowIndexes.count
         switch count {
         case 0:
-            statusBarLabel.stringValue = ""
+            if searchString.isEmpty {
+                statusBarLabel.stringValue = ""
+            } else {
+                statusBarLabel.stringValue = "Showing \(tensorRows.count) of \(allTensorRows.count) rows"
+            }
         case 1:
             statusBarLabel.stringValue = "1 row selected"
         default:
@@ -811,6 +843,23 @@ final class SafetensorsViewerView: NSView {
         currentSidebarWidth = min(maximumSidebarWidth, max(minimumSidebarWidth, currentSidebarWidth + deltaX))
         sidebarWidthConstraint?.constant = currentSidebarWidth
         layoutSubtreeIfNeeded()
+    }
+
+    @objc private func searchFieldChanged() {
+        searchString = searchField.stringValue
+        applySearch()
+    }
+
+    private func applySearch() {
+        applyCurrentFilterAndSort()
+        tableView.deselectAll(nil)
+        tableView.reloadData()
+        updateStatusBar()
+    }
+
+    func selectNone() {
+        tableView.deselectAll(nil)
+        updateStatusBar()
     }
 
     /*
@@ -979,7 +1028,7 @@ extension SafetensorsViewerView: NSTableViewDataSource, NSTableViewDelegate {
     }
 
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
-        applyCurrentSort()
+        applyCurrentFilterAndSort()
         tableView.reloadData()
         updateStatusBar()
     }
@@ -1030,6 +1079,16 @@ extension SafetensorsViewerView: NSTableViewDataSource, NSTableViewDelegate {
         return textField
     }
 
+}
+
+extension SafetensorsViewerView: NSSearchFieldDelegate {
+    func controlTextDidChange(_ notification: Notification) {
+        guard notification.object as? NSTextField === searchField else {
+            return
+        }
+
+        searchFieldChanged()
+    }
 }
 
 enum SafetensorsHeaderReader {

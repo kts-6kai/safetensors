@@ -30,6 +30,10 @@ class ViewController: NSViewController {
         }
     }
 
+    @IBAction func selectNone(_ sender: Any?) {
+        viewerView.selectNone()
+    }
+
     private func configureViewerView() {
         viewerView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(viewerView)
