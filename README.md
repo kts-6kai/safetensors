@@ -66,3 +66,7 @@ to generate previews for file URLs.
 fnd-defs type swiftlib gen --outfile /Users/kenschutte/Dropbox/repos/safetensors/generated.swift xcode_safetensors
 
 ```
+
+## Icon
+
+* drag 1024px into Assets.xcassets, 

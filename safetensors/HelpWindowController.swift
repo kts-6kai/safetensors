@@ -8,7 +8,7 @@
 import Cocoa
 import WebKit
 
-final class HelpWindowController: NSWindowController {
+final class HelpWindowController: NSWindowController, WKNavigationDelegate {
     private let webView = WKWebView(frame: .zero)
 
     convenience init() {
@@ -27,6 +27,7 @@ final class HelpWindowController: NSWindowController {
 
     private func configureContent(in view: NSView) {
         webView.translatesAutoresizingMaskIntoConstraints = false
+        webView.navigationDelegate = self
         view.addSubview(webView)
 
         NSLayoutConstraint.activate([
@@ -38,24 +39,12 @@ final class HelpWindowController: NSWindowController {
     }
 
     private func loadHelpPage() {
-        /*
-         not working.
-         */
-        print("** loadHelpPage")
-        
         guard let helpURL = Bundle.main.url(forResource: "help", withExtension: "html") else {
             showMissingHelpAlert()
             return
         }
-        
-        print(helpURL)
 
-        do {
-            let html = try String(contentsOf: helpURL, encoding: .utf8)
-            webView.loadHTMLString(html, baseURL: helpURL.deletingLastPathComponent())
-        } catch {
-            showMissingHelpAlert()
-        }
+        webView.loadFileURL(helpURL, allowingReadAccessTo: helpURL.deletingLastPathComponent())
     }
 
     private func showMissingHelpAlert() {
@@ -64,5 +53,17 @@ final class HelpWindowController: NSWindowController {
         alert.informativeText = "The bundled help.html file could not be found."
         alert.alertStyle = .warning
         alert.runModal()
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        safetensorsDebugLog("Help web content process terminated")
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        safetensorsDebugLog("Help failed to load: \(error.localizedDescription)")
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        safetensorsDebugLog("Help failed provisional load: \(error.localizedDescription)")
     }
 }
