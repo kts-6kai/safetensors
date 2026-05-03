@@ -12,6 +12,7 @@ import UniformTypeIdentifiers
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindowController: SettingsWindowController?
     private var helpWindowController: HelpWindowController?
+    private var viewerWindowControllers: [NSWindowController] = []
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         safetensorsDebugLog("AppDelegate applicationDidFinishLaunching")
@@ -29,12 +30,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func application(_ application: NSApplication, open urls: [URL]) {
         safetensorsDebugLog("AppDelegate open urls: \(urls.map(\.path).joined(separator: ", "))")
-        guard let url = urls.first else {
-            return
-        }
-
         application.activate(ignoringOtherApps: true)
-        viewerController()?.displayFile(at: url)
+        urls.forEach(openFileInViewerWindow)
     }
 
     @IBAction func openDocument(_ sender: Any?) {
@@ -46,8 +43,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         if panel.runModal() == .OK, let url = panel.url {
             safetensorsDebugLog("AppDelegate openDocument selected: \(url.path)")
-            NSDocumentController.shared.noteNewRecentDocumentURL(url)
-            viewerController()?.displayFile(at: url)
+            openFileInViewerWindow(url)
         }
     }
 
@@ -72,19 +68,72 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func viewerController() -> ViewController? {
-        if let viewController = NSApp.windows.first?.contentViewController as? ViewController {
+        if let viewController = viewerControllers.first {
             safetensorsDebugLog("AppDelegate using existing viewerController")
             return viewController
         }
 
+        return createViewerController()
+    }
+
+    private func openFileInViewerWindow(_ url: URL) {
+        NSDocumentController.shared.noteNewRecentDocumentURL(url)
+        viewerControllerForOpeningFile()?.displayFile(at: url)
+    }
+
+    private func viewerControllerForOpeningFile() -> ViewController? {
+        if let emptyViewerController = viewerControllers.first(where: { !$0.hasDisplayedFile }) {
+            safetensorsDebugLog("AppDelegate using empty viewerController")
+            return emptyViewerController
+        }
+
+        return createViewerController()
+    }
+
+    private var viewerControllers: [ViewController] {
+        NSApp.windows.compactMap { $0.contentViewController as? ViewController }
+    }
+
+    private func createViewerController() -> ViewController? {
         let storyboard = NSStoryboard(name: "Main", bundle: nil)
         guard let windowController = storyboard.instantiateInitialController() as? NSWindowController else {
             safetensorsDebugLog("AppDelegate failed to instantiate initial window controller")
             return nil
         }
 
+        trackViewerWindowController(windowController)
         windowController.showWindow(nil)
         safetensorsDebugLog("AppDelegate created viewerController from storyboard")
         return windowController.contentViewController as? ViewController
+    }
+
+    private func trackViewerWindowController(_ windowController: NSWindowController) {
+        guard !viewerWindowControllers.contains(where: { $0 === windowController }) else {
+            return
+        }
+
+        viewerWindowControllers.append(windowController)
+
+        if let window = windowController.window {
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(viewerWindowWillClose(_:)),
+                name: NSWindow.willCloseNotification,
+                object: window
+            )
+        }
+    }
+
+    @objc private func viewerWindowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else {
+            return
+        }
+
+        viewerWindowControllers.removeAll { $0.window === window }
+        NotificationCenter.default.removeObserver(
+            self,
+            name: NSWindow.willCloseNotification,
+            object: window
+        )
     }
 }

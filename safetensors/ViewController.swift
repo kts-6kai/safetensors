@@ -10,6 +10,11 @@ import Cocoa
 class ViewController: NSViewController {
     private let viewerView = SafetensorsViewerView()
     private var loadTask: Task<Void, Never>?
+    private(set) var displayedFileURL: URL?
+
+    var hasDisplayedFile: Bool {
+        displayedFileURL != nil
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -23,6 +28,7 @@ class ViewController: NSViewController {
     func displayFile(at url: URL) {
         safetensorsDebugLog("ViewController displayFile: \(url.path)")
         loadTask?.cancel()
+        displayedFileURL = url
         view.window?.title = url.lastPathComponent
         loadTask = Task { [weak self] in
             safetensorsDebugLog("ViewController starting load task")
