@@ -406,7 +406,7 @@ final class SafetensorsViewerView: NSView {
         actionsButton.menu = makeActionsMenu()
 
         searchField.translatesAutoresizingMaskIntoConstraints = false
-        searchField.placeholderString = "Search tensors"
+        searchField.placeholderString = "Filter by name"
         searchField.delegate = self
         searchField.target = self
         searchField.action = #selector(searchFieldChanged)
@@ -680,16 +680,25 @@ final class SafetensorsViewerView: NSView {
         return .orderedSame
     }
 
-    /*
-     check for single or multiple selection???
-     */
     private func makeTableMenu() -> NSMenu {
-        
-        /*
-         */
-        
         let menu = NSMenu()
+        menu.delegate = self
+        updateTableMenu(menu)
+        return menu
+    }
 
+    private func updateTableMenu(_ menu: NSMenu) {
+        menu.removeAllItems()
+
+        let selectedRowCount = tableView.selectedRowIndexes.count
+        if selectedRowCount == 1 {
+            addSingleRowItems(to: menu)
+        } else if selectedRowCount > 1 {
+            addMultipleRowItems(to: menu, selectedRowCount: selectedRowCount)
+        }
+    }
+
+    private func addSingleRowItems(to menu: NSMenu) {
         let copyNameItem = NSMenuItem(
             title: "Copy name",
             action: #selector(copyTensorName),
@@ -721,8 +730,15 @@ final class SafetensorsViewerView: NSView {
         
         detailsItem.target = self
         menu.addItem(detailsItem)
+    }
 
-        return menu
+    private func addMultipleRowItems(to menu: NSMenu, selectedRowCount: Int) {
+        let item = NSMenuItem(
+            title: "Process \(selectedRowCount) rows",
+            action: #selector(processMultipleRows),
+            keyEquivalent: "")
+        item.target = self
+        menu.addItem(item)
     }
 
     private func makeActionsMenu() -> NSMenu {
@@ -868,6 +884,10 @@ final class SafetensorsViewerView: NSView {
     @objc private func convertToNested() {
         print("todo....")
     }
+
+    @objc private func processMultipleRows() {
+        print("processMultipleRows...")
+    }
     
 
 //    func tensorAtRow(_ row:Int) -> STTensor? {
@@ -885,16 +905,30 @@ final class SafetensorsViewerView: NSView {
         return stfile.tensors[safe:row.index]
     }
 
+    /*
+     
+     */
     @objc private func exportTensorAsNpy() {
+        guard let tensor = tensorForMenu() else {return}
+        guard let stfile = loadedSTFile else {return}
 
-        let selectedRows = tableView.selectedRowIndexes
-        //IndexSet
+        let savePanel = NSSavePanel()
+        savePanel.title = "Export tensor as .npy"
+        savePanel.nameFieldStringValue = tensor.name + ".npy"
+        savePanel.canCreateDirectories = true
+        savePanel.isExtensionHidden = false
+
+        guard savePanel.runModal() == .OK, let url = savePanel.url else {
+            return
+        }
+
+        switch writeNPY(stfile: stfile, tensor: tensor, toPath: url.path) {
+        case .success:
+            showToast("Exported \(url.lastPathComponent)")
+        case .failure(let message):
+            showExportError(message)
+        }
         
-        let count = selectedRows.count
-        print(selectedRows)
-        print(count)
-
-        print("todo...")
     }
 
     
@@ -1016,7 +1050,37 @@ final class SafetensorsViewerView: NSView {
             }
         }
     }
+
+    private func showExportError(_ message: String) {
+        let alert = NSAlert()
+        alert.messageText = "Export Failed"
+        alert.informativeText = message
+        alert.alertStyle = .warning
+
+        if let window {
+            alert.beginSheetModal(for: window)
+        } else {
+            alert.runModal()
+        }
+    }
     
+}
+
+enum NPYWriteResult {
+    case success
+    case failure(String)
+}
+
+func writeNPY(stfile: STFile, tensor: STTensor, toPath: String) -> NPYWriteResult {
+    let magic = Data([0x93]) + Data("NUMPY".utf8)
+    let url = URL(fileURLWithPath: toPath)
+
+    do {
+        try magic.write(to: url, options: .atomic)
+        return .success
+    } catch {
+        return .failure("Could not export \(tensor.name): \(error.localizedDescription)")
+    }
 }
 
 
@@ -1088,6 +1152,16 @@ extension SafetensorsViewerView: NSSearchFieldDelegate {
         }
 
         searchFieldChanged()
+    }
+}
+
+extension SafetensorsViewerView: NSMenuDelegate {
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu === tableView.menu else {
+            return
+        }
+
+        updateTableMenu(menu)
     }
 }
 
