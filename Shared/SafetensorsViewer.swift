@@ -8,6 +8,7 @@
 import Cocoa
 
 
+
 enum SafetensorsDebug {
 
     nonisolated(unsafe)
@@ -32,8 +33,11 @@ nonisolated func safetensorsDebugLog(_ message: String) {
 
 struct SafetensorsSettings {
     static let autoMakeNestedKey = "autoMakeNested"
+    static let openMostRecentFileOnStartupKey = "openMostRecentFileOnStartup"
+    static let hiddenTableColumnsKey = "hiddenTableColumns"
     static let defaults: [String: Any] = [
-        autoMakeNestedKey: true
+        autoMakeNestedKey: true,
+        openMostRecentFileOnStartupKey: false
     ]
 }
 
@@ -133,6 +137,7 @@ final class SafetensorsViewerView: NSView {
      
      todo:
      - computed fields: min, max, #NaN, etc.
+     - should we store things that are easily derived? e.g. "ndim"
      */
     fileprivate struct TensorRow {
         
@@ -142,16 +147,20 @@ final class SafetensorsViewerView: NSView {
         let dtype:  String
         let shape:  [Int]
         
+        let ndim :  Int //== shape.count
+        
         let params: Int //== prod(shape)
         let bytes : Int //== params * bytesPerValue
 
-        init(index: Int, name: String, dtype: String, shape: [Int], params: Int, bytes: Int) {
+        init(index: Int, name: String, dtype: String, shape: [Int], bytes: Int) {
             self.index  = index
             self.name   = name
             self.dtype  = dtype
             self.shape  = shape
-            self.params = params
             self.bytes  = bytes
+
+            self.ndim   = shape.count
+            self.params = shape.product()
         }
 
         //
@@ -173,6 +182,7 @@ final class SafetensorsViewerView: NSView {
     private let summaryStack = NSStackView()
     private let mainContentView = NSView()
     private let tableView = NSTableView()
+    private let tableHeaderMenu = NSMenu()
     private let scrollView = NSScrollView()
     private let statusBarView = NSView()
     private let statusBarLabel = NSTextField(labelWithString: "")
@@ -201,6 +211,14 @@ final class SafetensorsViewerView: NSView {
     
     var loadedSTFile:STFile? = nil
 
+    var hasLoadedFile: Bool {
+        loadedSTFile != nil
+    }
+
+    var hasSelection: Bool {
+        !tableView.selectedRowIndexes.isEmpty
+    }
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         configure()
@@ -214,6 +232,7 @@ final class SafetensorsViewerView: NSView {
     }
 
     func showPlaceholder() {
+        loadedSTFile = nil
         parserErrorMessage = nil
         summaryItems = [
             /*
@@ -230,6 +249,7 @@ final class SafetensorsViewerView: NSView {
 
     func showLoading() {
         isLoading = true
+        loadedSTFile = nil
         parserErrorMessage = nil
         summaryItems = [
             
@@ -249,6 +269,11 @@ final class SafetensorsViewerView: NSView {
         safetensorsDebugLog("loadFile started: \(url.path)")
         showLoading()
         
+        /*
+         note: STFile(path:) handles both
+         .safetensor and .json loading.
+         */
+                
         if let stfile = STFile(path:url.path) {
 
             //?
@@ -260,9 +285,7 @@ final class SafetensorsViewerView: NSView {
 */
             
             self.loadedSTFile = stfile
-            
             safetensorsDebugLog("STFile init success")
-            
             showSTFile(stfile)
             
         }
@@ -270,26 +293,6 @@ final class SafetensorsViewerView: NSView {
             safetensorsDebugLog("STFile fail")
             showError(string:"Read Fail")
         }
-
-        /*
-        do {
-            let snapshot = try await SafetensorsFileLoader.load(url: url)
-            guard !Task.isCancelled else {
-                safetensorsDebugLog("loadFile cancelled after loader returned")
-                return
-            }
-            safetensorsDebugLog("loadFile succeeded with \(snapshot.tensorRows.count) tensor rows")
-            showSnapshot(snapshot)
-            
-        } catch is CancellationError {
-            safetensorsDebugLog("loadFile cancelled")
-            return
-            
-        } catch {
-            safetensorsDebugLog("loadFile caught error: \(error.localizedDescription)")
-            showError(error)
-        }
-         */
         
     }
 
@@ -316,7 +319,9 @@ final class SafetensorsViewerView: NSView {
                 
         let summary = STSummary(stfile:stfile)
         
-        
+        /*
+         construct a text table of counts of dtypes:
+         */
         var tt:[String] = []
         for pair in summary.dtypes.sortedByValueDescending() {
             tt.append(pair.key)
@@ -326,13 +331,19 @@ final class SafetensorsViewerView: NSView {
         }
         let dtypes_string = tt.joined(separator:"")
 
-        
-        
+        /*
+         */
+        //let headerSizeString = (summary.headerSize == nil) ? "-" : String(summary.headerSize!)
+
+        let headerSizeString:String = summary.headerSize.string(or:"-")
+
         summaryItems = [
-            SummaryItem(label: "File size",
-                        value: summary.fileSizeString()),
-                        
-            SummaryItem(label: "Header size",  value: "\(summary.headerSize)"),
+
+            SummaryItem(
+                label: "File size",
+                value: summary.fileSize.string(or:"-")),
+
+            SummaryItem(label: "Header size",  value: "\(headerSizeString)"),
             SummaryItem(label: "Tensor count", value: "\(summary.tensorCount)"),
             SummaryItem(label: "dtypes", value: "\(dtypes_string)"),
 
@@ -340,10 +351,21 @@ final class SafetensorsViewerView: NSView {
             //SummaryItem(label: "Auto make nested", value: UserDefaults.standard.bool(forKey: SafetensorsSettings.autoMakeNestedKey) ? "On" : "Off")
         ]
         
-        //tensorRows = snapshot.tensorRows
-        allTensorRows = stfile.tensors.enumerated().map { index, tensor in
+        if let metadata = stfile.metadata {
             
-            let params = tensor.shape.product()
+            /*
+             short text of 'metadata'.
+
+             temp: just do String(describing:)
+             */
+            let metadataString = String(describing:metadata)
+            
+            summaryItems.append(
+                SummaryItem(label: "metadata",
+                            value: metadataString))
+        }
+        
+        allTensorRows = stfile.tensors.enumerated().map { index, tensor in
             
             let bytes = tensor.dataOffsetEnd - tensor.dataOffsetStart
             // could check against:
@@ -354,7 +376,6 @@ final class SafetensorsViewerView: NSView {
                 name  : tensor.name,
                 dtype : tensor.dtype,
                 shape : tensor.shape,
-                params: params,
                 bytes : bytes,
             )
             
@@ -371,6 +392,7 @@ final class SafetensorsViewerView: NSView {
     func showError(string:String) {
         safetensorsDebugLog("showError: \(string)")
         isLoading = false
+        loadedSTFile = nil
         parserErrorMessage = string
         summaryItems = []
         allTensorRows = []
@@ -465,8 +487,11 @@ final class SafetensorsViewerView: NSView {
         
         tableView.allowsMultipleSelection = true
         
-        tableView.headerView = NSTableHeaderView()
+        let headerView = NSTableHeaderView()
+        headerView.menu = tableHeaderMenu
+        tableView.headerView = headerView
         tableView.menu = makeTableMenu()
+        tableHeaderMenu.delegate = self
 
         //
         addColumn(identifier: "index",  title: "index",   width: 60)
@@ -474,7 +499,9 @@ final class SafetensorsViewerView: NSView {
         addColumn(identifier: "dtype",  title: "dtype",  width: 80)
         addColumn(identifier: "shape",  title: "shape",  width: 160)
         addColumn(identifier: "params", title: "params", width: 80)
+        addColumn(identifier: "ndim",   title: "ndim",  width:  80)
         addColumn(identifier: "bytes",  title: "bytes",  width: 80)
+        restoreHiddenTableColumns()
 
 //        addColumn(identifier: "offset", title: "offset", width: 120)
 
@@ -624,6 +651,48 @@ final class SafetensorsViewerView: NSView {
         tableView.addTableColumn(column)
     }
 
+    private func updateTableHeaderMenu(_ menu: NSMenu) {
+        menu.removeAllItems()
+
+        let visibleColumnCount = tableView.tableColumns.filter { !$0.isHidden }.count
+        for column in tableView.tableColumns {
+            let item = NSMenuItem(
+                title: column.title,
+                action: #selector(toggleColumnVisibility),
+                keyEquivalent: "")
+            item.target = self
+            item.representedObject = column.identifier.rawValue
+            item.state = column.isHidden ? .off : .on
+            item.isEnabled = column.isHidden || visibleColumnCount > 1
+            menu.addItem(item)
+        }
+    }
+
+    private func restoreHiddenTableColumns() {
+        guard let hiddenColumnIDs = UserDefaults.standard.array(forKey: SafetensorsSettings.hiddenTableColumnsKey) as? [String] else {
+            return
+        }
+
+        let hiddenColumnIDSet = Set(hiddenColumnIDs)
+        for column in tableView.tableColumns {
+            column.isHidden = hiddenColumnIDSet.contains(column.identifier.rawValue)
+        }
+
+        if tableView.tableColumns.allSatisfy({ $0.isHidden }),
+           let firstColumn = tableView.tableColumns.first {
+            firstColumn.isHidden = false
+            saveHiddenTableColumns()
+        }
+    }
+
+    private func saveHiddenTableColumns() {
+        let hiddenColumnIDs = tableView.tableColumns
+            .filter { $0.isHidden }
+            .map { $0.identifier.rawValue }
+
+        UserDefaults.standard.set(hiddenColumnIDs, forKey: SafetensorsSettings.hiddenTableColumnsKey)
+    }
+
     private func applyCurrentFilterAndSort() {
         let sourceRows: [TensorRow]
         if searchString.isEmpty {
@@ -653,8 +722,7 @@ final class SafetensorsViewerView: NSView {
     private func compare(_ lhs: TensorRow, _ rhs: TensorRow, by key: String) -> ComparisonResult {
         switch key {
             
-            
-            //strings:
+        //strings:
         case "name":  return lhs.name.localizedStandardCompare(rhs.name)
         case "dtype": return lhs.dtype.localizedStandardCompare(rhs.dtype)
         case "shape":
@@ -664,7 +732,8 @@ final class SafetensorsViewerView: NSView {
         case "index":  return compare(lhs.index,  rhs.index)
         case "params": return compare(lhs.params, rhs.params)
         case "bytes":  return compare(lhs.bytes,  rhs.bytes)
-            
+        case "ndim":   return compare(lhs.ndim,   rhs.ndim)
+
         default:
             return .orderedSame
         }
@@ -707,6 +776,14 @@ final class SafetensorsViewerView: NSView {
         menu.addItem(copyNameItem)
         
         
+        let item0 = NSMenuItem(
+            title: "Copy tensor info as JSON",
+            action: #selector(copyTensorInfoAsJSON),
+            keyEquivalent: "")
+        item0.target = self
+        menu.addItem(item0)
+
+        
         let item1 = NSMenuItem(
             title: "Copy data as JSON",
             action: #selector(copyDataAsJSON),
@@ -733,12 +810,18 @@ final class SafetensorsViewerView: NSView {
     }
 
     private func addMultipleRowItems(to menu: NSMenu, selectedRowCount: Int) {
+        
+        /*
+         */
+        let rowString = (selectedRowCount > 1) ? "rows" : "row"
+        
         let item = NSMenuItem(
-            title: "Process \(selectedRowCount) rows",
-            action: #selector(processMultipleRows),
+            title: "Export \(selectedRowCount) \(rowString) to NPZ",
+            action: #selector(exportToNpz),
             keyEquivalent: "")
         item.target = self
         menu.addItem(item)
+        
     }
 
     private func makeActionsMenu() -> NSMenu {
@@ -764,14 +847,28 @@ final class SafetensorsViewerView: NSView {
         updateStatusBar()
     }
 
+    /*
+     temp. simple just used a few times here.
+     
+     e.g. return
+     "1 row"
+     "2 rows"
+     */
+    private func stringCount(word:String, count:Int) -> String {
+        return "\( count.formatted()  ) " + ((count == 1) ? word : word + "s")
+    }
+
     private func updateStatusBar() {
+        
         let count = tableView.selectedRowIndexes.count
+        
         switch count {
         case 0:
             if searchString.isEmpty {
-                statusBarLabel.stringValue = ""
+                statusBarLabel.stringValue = stringCount(word:"row", count: allTensorRows.count)
             } else {
-                statusBarLabel.stringValue = "Showing \(tensorRows.count) of \(allTensorRows.count) rows"
+                let s = stringCount(word:"row", count: allTensorRows.count)
+                statusBarLabel.stringValue = "Showing \(tensorRows.count) of \(s)"
             }
         case 1:
             statusBarLabel.stringValue = "1 row selected"
@@ -885,9 +982,26 @@ final class SafetensorsViewerView: NSView {
         print("todo....")
     }
 
-    @objc private func processMultipleRows() {
-        print("processMultipleRows...")
+    @objc private func toggleColumnVisibility(_ sender: NSMenuItem) {
+        guard let identifier = sender.representedObject as? String,
+              let column = tableView.tableColumns.first(where: { $0.identifier.rawValue == identifier }) else {
+            return
+        }
+
+        if !column.isHidden {
+            let visibleColumnCount = tableView.tableColumns.filter { !$0.isHidden }.count
+            guard visibleColumnCount > 1 else {
+                return
+            }
+        }
+
+        column.isHidden.toggle()
+        saveHiddenTableColumns()
+        tableView.sizeLastColumnToFit()
+        tableView.tile()
+        tableView.reloadData()
     }
+
     
 
 //    func tensorAtRow(_ row:Int) -> STTensor? {
@@ -905,6 +1019,7 @@ final class SafetensorsViewerView: NSView {
         return stfile.tensors[safe:row.index]
     }
 
+
     /*
      
      */
@@ -916,7 +1031,7 @@ final class SafetensorsViewerView: NSView {
         savePanel.title = "Export tensor as .npy"
         savePanel.nameFieldStringValue = tensor.name + ".npy"
         savePanel.canCreateDirectories = true
-        savePanel.isExtensionHidden = false
+        savePanel.isExtensionHidden    = false
 
         guard savePanel.runModal() == .OK, let url = savePanel.url else {
             return
@@ -931,16 +1046,74 @@ final class SafetensorsViewerView: NSView {
         
     }
 
+    /*
+     open Save panel and export to .npz
+     */
+    private func exportToNPZ(named names: [String]?) {
+        guard let stfile = loadedSTFile else {return}
+
+        let savePanel = NSSavePanel()
+        savePanel.title = "Export .npz"
+        
+        /*
+         if not set? It seems to use "Untitled"
+         - could use STFile name OR concat of some tensor names, etc.
+         */
+//        savePanel.nameFieldStringValue = tensor.name + ".npy"
+        
+        savePanel.canCreateDirectories = true
+        savePanel.isExtensionHidden    = false
+
+        guard savePanel.runModal() == .OK, let url = savePanel.url else {
+            return
+        }
+
+        switch writeNPZ(stfile: stfile, toPath: url.path, names: names) {
+        case .success:
+            showToast("Exported \(url.lastPathComponent)")
+        case .failure(let message):
+            showExportError(message)
+        }
+
+    }
+
+
+    
+    /*
+     similar to 'exportTensorAsNpy'
+     */
+    @objc private func exportToNpz() {
+        exportSelectionToNPZ()
+    }
+
+    func exportAllToNPZ() {
+        exportToNPZ(named: nil)
+    }
+
+    func exportSelectionToNPZ() {
+        let selectedNames = tableView.selectedRowIndexes.compactMap { row -> String? in
+            tensorRows[safe: row]?.name
+        }
+
+        guard !selectedNames.isEmpty else {
+            return
+        }
+
+        exportToNPZ(named: selectedNames)
+    }
+
+    @objc private func copyTensorInfoAsJSON() {
+        guard let tensor = tensorForMenu() else {return}
+        let s = tensor.toJSONString()
+        copyString(s, withMessage:"Copied data")
+    }
     
     @objc private func copyDataAsJSON() {
         guard let tensor = tensorForMenu() else {return}
         guard let stfile = loadedSTFile else {return}
         
         if let jsonString = stfile.readArrayAsJSON(tensor: tensor) {
-            
-            copyString(jsonString)
-            showToast("Copied data (length \(jsonString.count))")
-
+            copyString(jsonString, withMessage:"Copied data")
         }
         else {
             //more info?
@@ -953,12 +1126,20 @@ final class SafetensorsViewerView: NSView {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(string, forType:.string)
     }
+
+    /*
+     displays a Toast message: "{msg} [length {n}]"
+     */
+    func copyString(_ string:String, withMessage msg:String) {
+        copyString(string)
+        showToast("\(msg) [length \(string.count)]")
+    }
+
+
     
     @objc private func copyTensorName() {
         guard let tensor = tensorForMenu() else {return}
-        
-        copyString(tensor.name)
-        showToast("Copied name [length \(tensor.name.count)]")
+        copyString(tensor.name, withMessage: "Copied name")
     }
     
 
@@ -1066,12 +1247,18 @@ final class SafetensorsViewerView: NSView {
     
 }
 
-enum NPYWriteResult {
+/*
+ 
+ */
+enum WriteResult {
     case success
     case failure(String)
 }
 
-func writeNPY(stfile: STFile, tensor: STTensor, toPath: String) -> NPYWriteResult {
+/*
+ 
+ */
+func writeNPY(stfile: STFile, tensor: STTensor, toPath: String) -> WriteResult {
     let magic = Data([0x93]) + Data("NUMPY".utf8)
     let url = URL(fileURLWithPath: toPath)
 
@@ -1082,6 +1269,26 @@ func writeNPY(stfile: STFile, tensor: STTensor, toPath: String) -> NPYWriteResul
         return .failure("Could not export \(tensor.name): \(error.localizedDescription)")
     }
 }
+
+/*
+ 
+ */
+func writeNPZ(stfile: STFile, toPath: String, names:[String]? = nil) -> WriteResult {
+    
+    //TEMP. here, we will implement NPZ writer.
+    let tempData = Data([0x00])
+    
+    let url = URL(fileURLWithPath: toPath)
+
+    do {
+        try tempData.write(to: url, options: .atomic)
+        return .success
+    } catch {
+        return .failure("Could not export \(error.localizedDescription)")
+    }
+    
+}
+
 
 
 
@@ -1106,41 +1313,47 @@ extension SafetensorsViewerView: NSTableViewDataSource, NSTableViewDelegate {
         guard let tensorRow = tensorRows[safe:row] else {return nil}
         guard let column = tableColumn else {return nil}
         
-        let t:String
-        switch column.identifier.rawValue {
-        case "index":  t = String(tensorRow.index)
-
-        case "name":   t = tensorRow.name
-        case "dtype":  t = tensorRow.dtype
-        case "shape":  t = shapeString(tensorRow.shape)
-        case "params":
-            //t = String(tensorRow.params)
-            t = tensorRow.params.formatted()
-
-        case "bytes":
-            // format bytes?
-            let nb = tensorRow.bytes
-            /*
-             raw + format?
-             
-             */
-            t = nb.formatted(.byteCount(style:.file))
-
-        default:
-            t = "?"
-        }
 
         /*
          init each time?
          */
 
         //let textField = NSTextField(labelWithString: value(for: tableColumn.identifier.rawValue, in: tensorRows[row]))
-        let textField = NSTextField(labelWithString: t)
+        
+        let columnName = column.identifier.rawValue
+        
+        let label:String = labelFor(tensorRow:tensorRow, columnName:columnName)
 
+        let textField = NSTextField(labelWithString:label)
+        
         textField.lineBreakMode = .byTruncatingMiddle
         textField.maximumNumberOfLines = 1
         textField.font = .systemFont(ofSize: 12)
         return textField
+    }
+    
+    fileprivate func labelFor(tensorRow:TensorRow, columnName:String) -> String {
+        
+        switch columnName {
+        case "index":  return String(tensorRow.index)
+        case "name":   return tensorRow.name
+        case "dtype":  return tensorRow.dtype
+        case "shape":  return shapeString(tensorRow.shape)
+        case "params": return tensorRow.params.formatted()
+        case "ndim":   return String(tensorRow.ndim)
+
+        case "bytes":
+            // format bytes?
+            let nb = tensorRow.bytes
+            /*
+             raw + format?
+             */
+            return nb.formatted(.byteCount(style:.file))
+
+        default:
+            return "?"
+        }
+
     }
 
 }
@@ -1157,11 +1370,11 @@ extension SafetensorsViewerView: NSSearchFieldDelegate {
 
 extension SafetensorsViewerView: NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
-        guard menu === tableView.menu else {
-            return
+        if menu === tableView.menu {
+            updateTableMenu(menu)
+        } else if menu === tableHeaderMenu {
+            updateTableHeaderMenu(menu)
         }
-
-        updateTableMenu(menu)
     }
 }
 
@@ -1198,6 +1411,10 @@ private struct SafetensorsParserError: LocalizedError {
 }
 
 private enum SafetensorsFileLoader {
+    
+    /*
+     Is this no longer used?
+     */
     static func load(url: URL) async throws -> SafetensorsViewerSnapshot {
         
         let artificialLoadDelayNanoseconds = SafetensorsDebug.artificialLoadDelayNanoseconds

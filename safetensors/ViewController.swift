@@ -7,7 +7,7 @@
 
 import Cocoa
 
-class ViewController: NSViewController {
+class ViewController: NSViewController, NSMenuItemValidation {
     private let viewerView = SafetensorsViewerView()
     private var loadTask: Task<Void, Never>?
     private(set) var displayedFileURL: URL?
@@ -38,6 +38,25 @@ class ViewController: NSViewController {
 
     @IBAction func selectNone(_ sender: Any?) {
         viewerView.selectNone()
+    }
+
+    @IBAction func exportAllToNPZ(_ sender: Any?) {
+        viewerView.exportAllToNPZ()
+    }
+
+    @IBAction func exportSelectionToNPZ(_ sender: Any?) {
+        viewerView.exportSelectionToNPZ()
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        switch menuItem.action {
+        case #selector(exportAllToNPZ(_:)):
+            return viewerView.hasLoadedFile
+        case #selector(exportSelectionToNPZ(_:)):
+            return viewerView.hasLoadedFile && viewerView.hasSelection
+        default:
+            return true
+        }
     }
 
     private func configureViewerView() {

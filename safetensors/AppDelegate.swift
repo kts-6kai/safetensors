@@ -17,7 +17,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         safetensorsDebugLog("AppDelegate applicationDidFinishLaunching")
         UserDefaults.standard.register(defaults: SafetensorsSettings.defaults)
+        installExportMenuItems()
         _ = viewerController()
+        DispatchQueue.main.async { [weak self] in
+            self?.openMostRecentFileOnStartupIfNeeded()
+        }
     }
 
     func applicationWillTerminate(_ aNotification: Notification) {
@@ -37,7 +41,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @IBAction func openDocument(_ sender: Any?) {
         safetensorsDebugLog("AppDelegate openDocument")
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [UTType("io.util.safetensors.file") ?? .data]
+        
+        
+        panel.allowedContentTypes = [
+            UTType("io.util.safetensors.file") ?? .data,
+            .json
+        ]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
 
@@ -81,6 +90,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         viewerControllerForOpeningFile()?.displayFile(at: url)
     }
 
+    private func openMostRecentFileOnStartupIfNeeded() {
+        guard UserDefaults.standard.bool(forKey: SafetensorsSettings.openMostRecentFileOnStartupKey) else {
+            return
+        }
+
+        guard !viewerControllers.contains(where: { $0.hasDisplayedFile }) else {
+            safetensorsDebugLog("AppDelegate skipping startup recent file because a file is already open")
+            return
+        }
+
+        guard let recentURL = NSDocumentController.shared.recentDocumentURLs.first else {
+            safetensorsDebugLog("AppDelegate found no recent file for startup")
+            return
+        }
+
+        guard FileManager.default.fileExists(atPath: recentURL.path) else {
+            safetensorsDebugLog("AppDelegate skipping missing startup recent file: \(recentURL.path)")
+            return
+        }
+
+        guard let stfile = STFile(path: recentURL.path) else {
+            safetensorsDebugLog("AppDelegate skipping unparseable startup recent file: \(recentURL.path)")
+            return
+        }
+
+        stfile.close()
+        safetensorsDebugLog("AppDelegate opening startup recent file: \(recentURL.path)")
+        openFileInViewerWindow(recentURL)
+    }
+
     private func viewerControllerForOpeningFile() -> ViewController? {
         if let emptyViewerController = viewerControllers.first(where: { !$0.hasDisplayedFile }) {
             safetensorsDebugLog("AppDelegate using empty viewerController")
@@ -122,6 +161,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 object: window
             )
         }
+    }
+
+    /*
+     Adds two menu items for export to NPZ
+     */
+    private func installExportMenuItems() {
+        guard
+            let editMenu = NSApp.mainMenu?.item(withTitle: "Edit")?.submenu,
+            let selectNoneIndex = editMenu.items.firstIndex(where: { $0.action == #selector(ViewController.selectNone(_:)) })
+        else {
+            safetensorsDebugLog("AppDelegate could not find Select None menu item")
+            return
+        }
+
+        let insertionIndex = selectNoneIndex + 1
+        editMenu.insertItem(.separator(), at: insertionIndex)
+
+        let exportAllItem = NSMenuItem(
+            title: "Export all to NPZ",
+            action: #selector(ViewController.exportAllToNPZ(_:)),
+            keyEquivalent: ""
+        )
+        exportAllItem.target = nil
+        editMenu.insertItem(exportAllItem, at: insertionIndex + 1)
+
+        let exportSelectionItem = NSMenuItem(
+            title: "Export selection to NPZ",
+            action: #selector(ViewController.exportSelectionToNPZ(_:)),
+            keyEquivalent: ""
+        )
+        exportSelectionItem.target = nil
+        editMenu.insertItem(exportSelectionItem, at: insertionIndex + 2)
     }
 
     @objc private func viewerWindowWillClose(_ notification: Notification) {

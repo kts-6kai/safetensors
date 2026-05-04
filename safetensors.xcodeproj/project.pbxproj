@@ -38,6 +38,15 @@
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		97CD59872FA90E95006445F4 /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = /usr/share/man/man1/;
+			dstSubfolderSpec = 0;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
@@ -48,6 +57,7 @@
 		977831E92FA05000002E0177 /* Shared/SafetensorsViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/SafetensorsViewer.swift; sourceTree = "<group>"; };
 		977832132FA054BE002E0177 /* gen.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = gen.py; sourceTree = "<group>"; };
 		977832152FA3AFA4002E0177 /* generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = generated.swift; sourceTree = "<group>"; };
+		97CD59892FA90E95006445F4 /* safetensors_cli */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = safetensors_cli; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -84,6 +94,11 @@
 			path = safetensors_quicklook;
 			sourceTree = "<group>";
 		};
+		97CD598A2FA90E95006445F4 /* safetensors_cli */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = safetensors_cli;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -102,6 +117,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		97CD59862FA90E95006445F4 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -114,6 +136,7 @@
 				977831E92FA05000002E0177 /* Shared/SafetensorsViewer.swift */,
 				977831BD2FA02E97002E0177 /* safetensors */,
 				977831D62FA0312D002E0177 /* safetensors_quicklook */,
+				97CD598A2FA90E95006445F4 /* safetensors_cli */,
 				977831D32FA0312D002E0177 /* Frameworks */,
 				977831BC2FA02E97002E0177 /* Products */,
 			);
@@ -124,6 +147,7 @@
 			children = (
 				977831BB2FA02E97002E0177 /* safetensors.app */,
 				977831D22FA0312D002E0177 /* safetensors_quicklook.appex */,
+				97CD59892FA90E95006445F4 /* safetensors_cli */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -185,6 +209,28 @@
 			productReference = 977831D22FA0312D002E0177 /* safetensors_quicklook.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		97CD59882FA90E95006445F4 /* safetensors_cli */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 97CD598F2FA90E95006445F4 /* Build configuration list for PBXNativeTarget "safetensors_cli" */;
+			buildPhases = (
+				97CD59852FA90E95006445F4 /* Sources */,
+				97CD59862FA90E95006445F4 /* Frameworks */,
+				97CD59872FA90E95006445F4 /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				97CD598A2FA90E95006445F4 /* safetensors_cli */,
+			);
+			name = safetensors_cli;
+			packageProductDependencies = (
+			);
+			productName = safetensors_cli;
+			productReference = 97CD59892FA90E95006445F4 /* safetensors_cli */;
+			productType = "com.apple.product-type.tool";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -199,6 +245,9 @@
 						CreatedOnToolsVersion = 26.3;
 					};
 					977831D12FA0312D002E0177 = {
+						CreatedOnToolsVersion = 26.3;
+					};
+					97CD59882FA90E95006445F4 = {
 						CreatedOnToolsVersion = 26.3;
 					};
 				};
@@ -219,6 +268,7 @@
 			targets = (
 				977831BA2FA02E97002E0177 /* safetensors */,
 				977831D12FA0312D002E0177 /* safetensors_quicklook */,
+				97CD59882FA90E95006445F4 /* safetensors_cli */,
 			);
 		};
 /* End PBXProject section */
@@ -257,6 +307,13 @@
 			files = (
 				977832172FA3AFA4002E0177 /* generated.swift in Sources */,
 				977831EB2FA05000002E0177 /* Shared/SafetensorsViewer.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		97CD59852FA90E95006445F4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -521,6 +578,32 @@
 			};
 			name = Release;
 		};
+		97CD598D2FA90E95006445F4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = P68TP473M6;
+				ENABLE_HARDENED_RUNTIME = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		97CD598E2FA90E95006445F4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = P68TP473M6;
+				ENABLE_HARDENED_RUNTIME = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -547,6 +630,15 @@
 			buildConfigurations = (
 				977831E42FA0312D002E0177 /* Debug */,
 				977831E52FA0312D002E0177 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		97CD598F2FA90E95006445F4 /* Build configuration list for PBXNativeTarget "safetensors_cli" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				97CD598D2FA90E95006445F4 /* Debug */,
+				97CD598E2FA90E95006445F4 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

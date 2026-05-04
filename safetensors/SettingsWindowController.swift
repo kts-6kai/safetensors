@@ -12,6 +12,9 @@ final class SettingsWindowController: NSWindowController {
     private let autoMakeNestedCheckbox = NSButton(
         checkboxWithTitle: "Auto make nested with dots",
         target: nil, action: nil)
+    private let openMostRecentFileOnStartupCheckbox = NSButton(
+        checkboxWithTitle: "Open most recent file on startup",
+        target: nil, action: nil)
 
     convenience init() {
         let viewController = NSViewController()
@@ -19,7 +22,7 @@ final class SettingsWindowController: NSWindowController {
         window.title = "Settings"
         window.styleMask = [.titled, .closable]
         window.isReleasedWhenClosed = false
-        window.setContentSize(NSSize(width: 360, height: 120))
+        window.setContentSize(NSSize(width: 360, height: 150))
         window.center()
 
         self.init(window: window)
@@ -38,7 +41,12 @@ final class SettingsWindowController: NSWindowController {
         autoMakeNestedCheckbox.target = self
         autoMakeNestedCheckbox.action = #selector(autoMakeNestedChanged)
 
+        openMostRecentFileOnStartupCheckbox.state = UserDefaults.standard.bool(forKey: SafetensorsSettings.openMostRecentFileOnStartupKey) ? .on : .off
+        openMostRecentFileOnStartupCheckbox.target = self
+        openMostRecentFileOnStartupCheckbox.action = #selector(openMostRecentFileOnStartupChanged)
+
         stack.addArrangedSubview(autoMakeNestedCheckbox)
+        stack.addArrangedSubview(openMostRecentFileOnStartupCheckbox)
         view.addSubview(stack)
 
         NSLayoutConstraint.activate([
@@ -51,5 +59,12 @@ final class SettingsWindowController: NSWindowController {
 
     @objc private func autoMakeNestedChanged() {
         UserDefaults.standard.set(autoMakeNestedCheckbox.state == .on, forKey: SafetensorsSettings.autoMakeNestedKey)
+    }
+
+    @objc private func openMostRecentFileOnStartupChanged() {
+        UserDefaults.standard.set(
+            openMostRecentFileOnStartupCheckbox.state == .on,
+            forKey: SafetensorsSettings.openMostRecentFileOnStartupKey
+        )
     }
 }
